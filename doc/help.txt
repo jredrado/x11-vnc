@@ -1,0 +1,78 @@
+#Install Azure client
+
+curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+
+az login --use-device-code
+
+#List available zones
+az account list-locations --output table
+
+az group create --name RAGResourceGroup --location francecentral
+
+#Create a container account
+az storage account create --name mindsdbstorage --resource-group RAGResourceGroup --location francecentral --sku Standard_LRS
+
+#Create a a container instance
+# Especificar number of cores and memory
+
+az container create \
+  --resource-group RAGResourceGroup \
+  --name mindsdbcontainer \
+  --image mindsdb/mindsdb \
+  --dns-name-label mindsdb-dns \
+  --ports 47334 47335 47336 \
+  --ip-address Public \
+  --cpu 4 \
+  --memory 16
+
+# mindsdb/mindsdb:lightwood
+
+
+#Get the DNS
+az container show --resource-group RAGResourceGroup --name mindsdbcontainer --query "{FQDN:ipAddress.fqdn}" --output tsv
+
+#Restart container
+az container restart --resource-group RAGResourceGroup --name mindsdbcontainer
+
+#Delete container
+az container delete --resource-group RAGResourceGroup  --name mindsdbcontainer --yes
+
+#Login into the container shell
+az container exec --resource-group RAGResourceGroup --name mindsdbcontainer --exec-command "/bin/sh"
+
+
+# Create a new model
+CREATE ML_ENGINE openai_engine
+FROM openai
+USING
+      openai_api_key = 'xxxxxxx';
+      
+
+
+#More flexible to operate the model using prompt_template
+CREATE MODEL openai_model
+PREDICT answer
+USING
+      engine = 'openai_engine',  -- engine name as created via CREATE ML_ENGINE
+      mode = 'default', -- optional, ...
+      model_name = 'gpt-3.5-turbo',  -- optional with default value of gpt-3.5-turbo
+      prompt_template = 'input your query here', -- optional, user provides instructions to the model here
+      max_tokens = 100, -- optional, token limit for answer
+      temperature = 0.3; -- temp
+
+#Development
+
+#Build the image to test
+docker build -t tst .
+
+#Run the image
+# test the image locally
+docker run --env-file env.list --rm -it -p 80:80 tst
+
+
+#Set environment variables
+export $(jq -r '.[] | "\(.name)=\(.value)"' settings.json)
+
+#Generate file for docker run
+jq -r '.[] | "\(.name)=\(.value)"' settings.json > env.list
+

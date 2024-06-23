@@ -1,0 +1,59 @@
+[
+    {
+      "name": "AZURE_OPENAI_API_KEY",
+      "value": ""
+    },
+    {
+      "name": "AZURE_OPENAI_ENDPOINT",
+      "value": "https://name.openai.azure.com/"
+    },
+    {
+        "name": "AZURE_OPENAI_API_VERSION",
+        "value": "2024-02-01"
+    },
+    {
+        "name": "AZURE_OPENAI_CHAT_DEPLOYMENT_NAME",
+        "value": "Model"
+    },
+    {
+        "name": "AZURE_OPENAI_EMBEDDING_NAME",
+        "value": "text-embedding-ada-002",
+        "slotSetting": false
+     },
+      {
+        "name": "AZURE_OPENAI_MAX_TOKENS",
+        "value": "800",
+        "slotSetting": false
+      },
+      {
+        "name": "AZURE_OPENAI_MODEL",
+        "value": "Model-2",
+        "slotSetting": false
+      },
+      {
+        "name": "AZURE_OPENAI_MODEL_NAME",
+        "value": "gpt-4",
+        "slotSetting": false
+      },
+      {
+        "name": "AZURE_OPENAI_RESOURCE",
+        "value": "",
+        "slotSetting": false
+      },
+      {
+        "name": "AZURE_OPENAI_STOP_SEQUENCE",
+        "value": "",
+        "slotSetting": false
+      },
+      {
+        "name": "AZURE_OPENAI_TEMPERATURE",
+        "value": "0.7",
+        "slotSetting": false
+      },
+      {
+        "name": "AZURE_OPENAI_TOP_P",
+        "value": "0.95",
+        "slotSetting": false
+      }
+
+  ]
