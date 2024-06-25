@@ -71,7 +71,7 @@ docker run --env-file env.list --rm -it -p 80:80 tst
 
 
 #Set environment variables
-export $(jq -r '.[] | "\(.name)=\(.value)"' settings.json)
+export $(jq -r '.[] | "\(.name)=\(.value)"' scripts/settings.json)
 
 #Generate file for docker run
 jq -r '.[] | "\(.name)=\(.value)"' settings.json > env.list

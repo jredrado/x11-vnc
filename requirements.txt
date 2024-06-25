@@ -2,6 +2,8 @@ langchain
 langchain_community
 langchain-openai
 streamlit
+chainlit
 python-dotenv
 faiss-cpu
 tornado
+pypdf
