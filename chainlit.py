@@ -22,10 +22,12 @@ from langchain_core.output_parsers import StrOutputParser
 
 from langchain.schema.runnable import Runnable
 from langchain.schema.runnable.config import RunnableConfig
+from langchain.callbacks.base import BaseCallbackHandler
 
-
+from typing import Dict, Optional
 import chainlit as cl
 
+  
 # Load the variables from .env
 load_dotenv()
 
@@ -70,6 +72,7 @@ def combine_documents(
     docs, document_prompt=DEFAULT_DOCUMENT_PROMPT, document_separator="\n\n"
 ):
     """Combine documents into a single string."""
+
     doc_strings = [format_document(doc, document_prompt) for doc in docs]
     return document_separator.join(doc_strings)
 
@@ -94,8 +97,7 @@ def format_chat_history(chat_history: dict) -> str:
     return buffer
 
 
-vector_store_topic = None
-output_type = None
+output_type = "detailed"
 
 
 # to create a new file named vectorstore in your current directory.
@@ -110,14 +112,43 @@ def load_knowledgeBase():
         db = FAISS.load_local(DB_FAISS_PATH, embedding,allow_dangerous_deserialization=True)
         return db
 
+class PostMessageHandler(BaseCallbackHandler):
+        """
+        Callback handler for handling the retriever and LLM processes.
+        Used to post the sources of the retrieved documents as a Chainlit element.
+        """
+
+        def __init__(self, msg: cl.Message):
+            BaseCallbackHandler.__init__(self)
+            self.msg = msg
+            self.sources = set()  # To store unique pairs
+
+        def on_retriever_end(self, documents, *, run_id, parent_run_id, **kwargs):
+            for d in documents:
+                source_page_pair = (d.metadata['source'], d.metadata['page'])
+                self.sources.add(source_page_pair)  # Add unique pairs to the set
+
+        def on_llm_end(self, response, *, run_id, parent_run_id, **kwargs):
+            if len(self.sources):
+                sources_text = "\n".join([f"{source}#page={page}" for source, page in self.sources])
+                self.msg.elements.append(
+                    cl.Text(name="Sources", content=sources_text, display="inline")
+                )
+
 @cl.on_chat_start
 async def on_chat_start():
+
+    cl.user_session.set(
+        "chat_history",
+        [{"role": "system", "content": "You are a helpful assistant on teachers regulations on University of Navarra"}],
+    )
 
     db = load_knowledgeBase()
 
     model = AzureChatOpenAI(
         openai_api_version=os.environ["AZURE_OPENAI_API_VERSION"],
-        azure_deployment=os.environ["AZURE_OPENAI_CHAT_DEPLOYMENT_NAME"]
+        azure_deployment=os.environ["AZURE_OPENAI_CHAT_DEPLOYMENT_NAME"],
+        temperature=0, streaming=True
     )
 
     embedding = AzureOpenAIEmbeddings(
@@ -136,7 +167,7 @@ async def on_chat_start():
 
     context = {
         "context": itemgetter("standalone_question")
-                    | db.as_retriever(search_kwargs={'k': 3})
+                    | db.as_retriever(search_type="similarity",search_kwargs={'k': 4}).with_config(run_name="Document retriever")
                     | combine_documents,
         "question": itemgetter("standalone_question"),
     }
@@ -148,14 +179,28 @@ async def on_chat_start():
 
 @cl.on_message
 async def on_message(message: cl.Message):
+    message_history = cl.user_session.get("chat_history")
+    message_history.append({"role": "user", "content": message.content})
+
     chain = cl.user_session.get("runnable")  # type: Runnable
 
     msg = cl.Message(content="")
 
     async for chunk in chain.astream(
-        {"question": message.content,"chat_history": []},
-        config=RunnableConfig(callbacks=[cl.LangchainCallbackHandler()]),
+        {"question": message.content,"chat_history": message_history}, 
+        config=RunnableConfig(callbacks=[cl.LangchainCallbackHandler(), PostMessageHandler(msg)],
+                                configurable={
+                                    "output_type": output_type,
+                                }),
     ):
         await msg.stream_token(chunk)
 
+    # Visualizar PDF https://medium.com/@Kishore-B/building-rag-application-using-langchain-openai-faiss-3b2af23d98ba
+
+    # Authentication
+    # Chat Settings para los parámetros
+
     await msg.send()
+
+    message_history.append({"role": "assistant", "content": msg.content})
+    await msg.update()
