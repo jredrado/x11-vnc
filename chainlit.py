@@ -39,6 +39,25 @@ def oauth_callback(
 ) -> Optional[cl.User]:
   return default_user
 
+import chainlit as cl
+
+@cl.set_starters
+async def set_starters():
+    return [
+        cl.Starter(
+            label="Ayuda",
+            message="¿Qué puedes hacer por mi?",
+            icon="/public/help.svg",
+            ),
+
+        cl.Starter(
+            label="Explain superconductors",
+            message="Explain superconductors like I'm five years old.",
+            icon="/public/idea.svg",
+            ),
+        ]
+
+
 # Load the variables from .env
 load_dotenv()
 
