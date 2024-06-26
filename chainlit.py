@@ -1,4 +1,6 @@
 import os
+from pathlib import Path  
+
 from typing import List, Optional
 from operator import itemgetter
 
@@ -122,17 +124,27 @@ class PostMessageHandler(BaseCallbackHandler):
             BaseCallbackHandler.__init__(self)
             self.msg = msg
             self.sources = set()  # To store unique pairs
+            self.sources_path = set()
 
         def on_retriever_end(self, documents, *, run_id, parent_run_id, **kwargs):
             for d in documents:
                 source_page_pair = (d.metadata['source'], d.metadata['page'])
                 self.sources.add(source_page_pair)  # Add unique pairs to the set
+                self.sources_path.add(d.metadata['source'])
 
         def on_llm_end(self, response, *, run_id, parent_run_id, **kwargs):
             if len(self.sources):
-                sources_text = "\n".join([f"{source}#page={page}" for source, page in self.sources])
+                sources_text = "\n".join([f"{Path(source).name}#page={page}" for source, page in self.sources])
                 self.msg.elements.append(
                     cl.Text(name="Sources", content=sources_text, display="inline")
+                )
+
+            for path in self.sources_path:
+                self.msg.elements.append(
+                     cl.File(
+                            name=Path(path).name,
+                            path=path,
+                            display="inline")
                 )
 
 @cl.on_chat_start
@@ -195,10 +207,11 @@ async def on_message(message: cl.Message):
     ):
         await msg.stream_token(chunk)
 
-    # Visualizar PDF https://medium.com/@Kishore-B/building-rag-application-using-langchain-openai-faiss-3b2af23d98ba
-
+    # Indexar recursos web
+    # Diferentes perfiles para otros modelos
     # Authentication
     # Chat Settings para los parámetros
+    # GuardRail https://github.com/openai/openai-cookbook/blob/main/examples/How_to_use_guardrails.ipynb
 
     await msg.send()
 

@@ -9,15 +9,12 @@ RUN pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt
 
 ADD app.py ./app.py
 ADD chainlit.py ./chainlit.py
+ADD chainlit.md ./chainlit.md
 
 COPY ./vectorstore/db_faiss ./vectorstore/db_faiss
-
-COPY .streamlit /root/.streamlit
 
 COPY .chainlit .chainlit
 
 EXPOSE 80
-
-# CMD [ "streamlit", "run", "app.py" ]
 
 CMD [ "chainlit", "run", "chainlit.py", "--port","80"]
