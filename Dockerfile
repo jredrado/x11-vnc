@@ -13,6 +13,7 @@ ADD chainlit.md ./chainlit.md
 
 COPY ./vectorstore/db_faiss ./vectorstore/db_faiss
 
+COPY ./public ./public
 COPY .chainlit .chainlit
 
 EXPOSE 80

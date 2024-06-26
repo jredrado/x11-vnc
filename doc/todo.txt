@@ -1,0 +1,5 @@
+    # Indexar recursos web
+    # Copilot
+    # Diferentes perfiles para otros modelos. Chat profiles
+    # Chat Settings para los parámetros
+    # GuardRail https://github.com/openai/openai-cookbook/blob/main/examples/How_to_use_guardrails.ipynb

@@ -29,7 +29,16 @@ from langchain.callbacks.base import BaseCallbackHandler
 from typing import Dict, Optional
 import chainlit as cl
 
-  
+
+@cl.oauth_callback
+def oauth_callback(
+  provider_id: str,
+  token: str,
+  raw_user_data: Dict[str, str],
+  default_user: cl.User,
+) -> Optional[cl.User]:
+  return default_user
+
 # Load the variables from .env
 load_dotenv()
 
@@ -206,12 +215,6 @@ async def on_message(message: cl.Message):
                                 }),
     ):
         await msg.stream_token(chunk)
-
-    # Indexar recursos web
-    # Diferentes perfiles para otros modelos
-    # Authentication
-    # Chat Settings para los parámetros
-    # GuardRail https://github.com/openai/openai-cookbook/blob/main/examples/How_to_use_guardrails.ipynb
 
     await msg.send()
 
