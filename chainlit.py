@@ -180,7 +180,7 @@ async def on_chat_start():
 
     cl.user_session.set(
         "chat_history",
-        [{"role": "system", "content": "You are a helpful assistant on teachers regulations on University of Navarra"}],
+        [{"role": "system", "content": "You are a helpful assistant on staff regulations on University of Navarra. You must be kind and answer the questions from University employees regarding several subjects."}],
     )
 
     db = load_knowledgeBase()
@@ -188,7 +188,7 @@ async def on_chat_start():
     model = AzureChatOpenAI(
         openai_api_version=os.environ["AZURE_OPENAI_API_VERSION"],
         azure_deployment=os.environ["AZURE_OPENAI_CHAT_DEPLOYMENT_NAME"],
-        temperature=0, streaming=True
+        temperature=0.5, streaming=True
     )
 
     embedding = AzureOpenAIEmbeddings(

@@ -16,6 +16,8 @@ COPY ./vectorstore/db_faiss ./vectorstore/db_faiss
 COPY ./public ./public
 COPY .chainlit .chainlit
 
+COPY ./doc ./doc
+
 EXPOSE 80
 
 CMD [ "chainlit", "run", "chainlit.py", "--port","80"]

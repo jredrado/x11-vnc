@@ -8,3 +8,4 @@ faiss-cpu
 tornado
 pypdf
 pathlib
+tqdm
