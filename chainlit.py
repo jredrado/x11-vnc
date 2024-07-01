@@ -25,7 +25,7 @@ from langchain.schema.runnable import (
 )
 
 from langchain_community.vectorstores import FAISS
-from langchain_core.output_parsers import StrOutputParser
+from langchain_core.output_parsers import StrOutputParser,JsonOutputParser
 
 from langchain.schema.runnable import Runnable
 from langchain.schema.runnable.config import RunnableConfig
@@ -163,9 +163,14 @@ async def execute_user_actions(input:Dict):
 
     return data
 
-async def upload_actions(input:Dict):
+@cl.step(type="tool")
+async def upload_actions(input):
 
-    print(input)
+    current_step = cl.context.current_step
+
+    # Override the input of the step
+    print("Step input:",current_step.input)
+
     # Wait for the user to upload a file
     files = None
 
@@ -180,11 +185,10 @@ async def upload_actions(input:Dict):
         text = f.read()
 
     # Let the user know that the system is ready
-    await cl.Message(
-        content=f"`{text_file.name}` uploaded, it contains {len(text)} characters!"
-    ).send()
+    #await current_step.stream_token(f"`{text_file.name}` uploaded, it contains {len(text)} characters!")
 
-    return {"action": "uploadfiles"}
+    return f"`{text_file.name}` uploaded, it contains {len(text)} characters!"
+
 
 @tool
 def search(query: str) -> str:
@@ -292,14 +296,14 @@ async def on_chat_start():
 
     fake_llm = FakeListLLM(responses=["One"])
 
-    upload_chain = RunnableMap (
-            action = RunnablePassthrough() 
-            | nop
-            | upload_actions
-            | streaming_parser
+    # upload_chain = RunnableMap (
+    #        action = RunnablePassthrough() 
+    #        | nop
+    #        | upload_actions
+    # 
+    #)
 
-    )
-
+    upload_chain =   RunnableLambda(nop) |  RunnableLambda(upload_actions)
 
     inputs = RunnableMap(
         standalone_question=RunnablePassthrough.assign(
