@@ -2,6 +2,9 @@ import os
 import json 
 
 from pathlib import Path  
+from os import path
+from glob import glob  
+import shutil
 
 from typing import List, Optional
 from operator import itemgetter
@@ -14,8 +17,8 @@ from langchain_core.prompts import PromptTemplate, ChatPromptTemplate
 from langchain_core.runnables import ConfigurableField, RunnablePassthrough, RunnableLambda,RunnableBranch
 from langchain.schema import format_document, Document
 from langchain.tools import tool
-
-from langchain_community.llms.fake import FakeListLLM
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_community.document_loaders import PyPDFLoader, PyMuPDFLoader
 
 from langchain.schema.runnable import (
     ConfigurableField,
@@ -65,6 +68,8 @@ async def set_starters():
 
 # Load the variables from .env
 load_dotenv()
+
+FILES_FOLDER = './doc'
 
 # Base templates for vector store prompts
 template_single_line = PromptTemplate.from_template(
@@ -128,15 +133,14 @@ ACTIONS_QUESTION_PROMPT = PromptTemplate.from_template(
         Question: {question}
         Available actions:
             - uploadfiles: Upload files
-            - reindex: Reindex the database
+            - reindex: Reindex or rebuild the database
+            - listfiles: List the files of the knowledge database
         If there is no action please answer None
     """
 )
 
-FAKE_PROMPT = PromptTemplate.from_template(
-    """ FAKE PROMPT
-    """
-)
+def find_ext(dr, ext):
+    return glob(path.join(dr,"*.{}".format(ext)))
 
 async def nop (input):
     print("Nop: ", input)
@@ -146,22 +150,65 @@ async def action_response (input):
     print("Action response: ", input.content)
     return input.content
 
-async def execute_user_actions(input:Dict):
-    print("Exec user actions", input.content)
+@cl.action_callback("remove_file")
+async def on_action(action):
+    try:
+        os.remove(action.value)
+        await cl.Message(content=f"Executed {action}").send()
+        # Optionally remove the action button from the chatbot user interface
+        await action.remove()
+    except FileNotFoundError as err:
+        print(f"Unexpected {err=}, {type(err)=}")
 
-    data = json.loads(input.content)
-    print(data)
 
-    if data['action_key'] == "uploadfiles":
-        files = None
+@cl.step(type="tool")
+async def list_files(input):
+    current_step = cl.context.current_step
 
-        # Wait for the user to upload a file
-        while files == None:
-            files = await cl.AskFileMessage(
-                content="Please upload a text file to begin!", accept=["text/plain"]
-            ).send()
+    pdf_files = find_ext(FILES_FOLDER,"pdf")
 
-    return data
+    for pdf in pdf_files:
+        actions = []
+        actions.append( cl.Action(name="remove_file", label="Eliminar", value=pdf, description="Remove file") )
+        await cl.Message(content=Path(pdf).name, actions=actions).send()
+
+    return ""
+
+@cl.step(type="tool")
+async def reindex(input):
+
+        embedding = AzureOpenAIEmbeddings(
+            azure_deployment=os.environ["AZURE_OPENAI_EMBEDDING_NAME"],
+            openai_api_version=os.environ["AZURE_OPENAI_API_VERSION"],
+        )
+
+        DB_FAISS_PATH = 'vectorstore/db_faiss'
+
+        pdf_files = find_ext(FILES_FOLDER,"pdf")
+
+        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+
+        langchain_documents = []
+        for document in pdf_files:
+            try:
+                loader = PyMuPDFLoader(document)
+                data = loader.load()
+                langchain_documents.extend(data)
+            except Exception as err:
+                print(f"Unexpected {err=}, {type(err)=}")
+                continue
+            
+        if len(langchain_documents) > 0:
+            splits = text_splitter.split_documents(langchain_documents)
+            vectorstore = FAISS.from_documents(documents=splits, embedding=embedding)
+
+            shutil.rmtree(DB_FAISS_PATH)
+
+            vectorstore.save_local(DB_FAISS_PATH)
+
+            await cl.Message(content="Se ha reconstruido la base de datos").send()
+
+        return ""
 
 @cl.step(type="tool")
 async def upload_actions(input):
@@ -176,24 +223,18 @@ async def upload_actions(input):
 
     while files == None:
         files = await cl.AskFileMessage(
-                content="Please upload a text file to begin!", accept=["text/plain"]
+                content="Please upload a text file to begin!", accept=["application/pdf"],
+                max_files=10,
+                max_size_mb=10
         ).send()
 
-    text_file = files[0]
+    for file in files:
+        print(file,"-->",f'{FILES_FOLDER}/{file.name}')
+        shutil.copy(file.path,f'{FILES_FOLDER}/{file.name}')
 
-    with open(text_file.path, "r", encoding="utf-8") as f:
-        text = f.read()
-
-    # Let the user know that the system is ready
-    #await current_step.stream_token(f"`{text_file.name}` uploaded, it contains {len(text)} characters!")
-
-    return f"`{text_file.name}` uploaded, it contains {len(text)} characters!"
+    return f"`Los archivos {files}` se han añadido a la base de datos"
 
 
-@tool
-def search(query: str) -> str:
-    """Look up things online."""
-    return "LangChain"
 
 def format_chat_history(chat_history: dict) -> str:
     """Format chat history into a string."""
@@ -253,17 +294,6 @@ class PostMessageHandler(BaseCallbackHandler):
                             display="inline")
                 )
 
-from typing import Iterable
-from langchain_core.runnables import RunnableGenerator
-from langchain_core.messages.ai import AIMessageChunk
-
-def streaming_parse(chunks: Iterable[AIMessageChunk]) -> Iterable[str]:
-    for chunk in chunks:
-        yield chunk.content.swapcase()
-
-
-streaming_parser = RunnableGenerator(streaming_parse)
-
 @cl.on_chat_start
 async def on_chat_start():
 
@@ -292,18 +322,10 @@ async def on_chat_start():
         | action_response
     )
 
-   
 
-    fake_llm = FakeListLLM(responses=["One"])
+    upload_chain =   RunnableLambda(upload_actions)
 
-    # upload_chain = RunnableMap (
-    #        action = RunnablePassthrough() 
-    #        | nop
-    #        | upload_actions
-    # 
-    #)
-
-    upload_chain =   RunnableLambda(nop) |  RunnableLambda(upload_actions)
+    list_chain =   RunnableLambda(list_files)
 
     inputs = RunnableMap(
         standalone_question=RunnablePassthrough.assign(
@@ -325,6 +347,8 @@ async def on_chat_start():
 
     branch = RunnableBranch(
         (lambda x: "uploadfiles" == x["action"]["action"].lower(), upload_chain),
+        (lambda x: "listfiles" == x["action"]["action"].lower(), list_chain),
+        (lambda x: "reindex" == x["action"]["action"].lower(), reindex),
         chain,
     )
 

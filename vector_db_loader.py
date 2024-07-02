@@ -7,7 +7,7 @@ from glob import glob
 def find_ext(dr, ext):
     return glob(path.join(dr,"*.{}".format(ext)))
 
-from langchain_community.document_loaders import PyPDFLoader
+from langchain_community.document_loaders import PyPDFLoader,PyMuPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
 from langchain_openai import AzureOpenAIEmbeddings
@@ -29,7 +29,7 @@ if __name__=="__main__":
         langchain_documents = []
         for document in tqdm(pdf_files):
             try:
-                loader = PyPDFLoader(document)
+                loader = PyMuPDFLoader(document)
                 data = loader.load()
                 langchain_documents.extend(data)
             except Exception:
