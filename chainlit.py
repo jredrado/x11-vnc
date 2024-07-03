@@ -38,14 +38,14 @@ from typing import Dict, Optional
 import chainlit as cl
 
 
-#@cl.oauth_callback
-#def oauth_callback(
-#  provider_id: str,
-#  token: str,
-#  raw_user_data: Dict[str, str],
-#  default_user: cl.User,
-#) -> Optional[cl.User]:
-#  return default_user
+@cl.oauth_callback
+def oauth_callback(
+  provider_id: str,
+  token: str,
+  raw_user_data: Dict[str, str],
+  default_user: cl.User,
+) -> Optional[cl.User]:
+  return default_user
 
 import chainlit as cl
 
@@ -106,6 +106,13 @@ configurable_prompt = template_single_line.configurable_alternatives(
 )
 
 DEFAULT_DOCUMENT_PROMPT = PromptTemplate.from_template(template="{page_content}")
+
+@cl.step(type="tool")
+def retrieve_documents(input):
+    db = cl.user_session.get("db")
+    if db:
+        return db.as_retriever(search_type="similarity",search_kwargs={'k': 4}).with_config(run_name="Document retriever")
+    return []
 
 
 def combine_documents(
@@ -177,12 +184,14 @@ async def list_files(input):
 @cl.step(type="tool")
 async def reindex(input):
 
+        app_user = cl.user_session.get("user")
+
         embedding = AzureOpenAIEmbeddings(
-            azure_deployment=os.environ["AZURE_OPENAI_EMBEDDING_NAME"],
-            openai_api_version=os.environ["AZURE_OPENAI_API_VERSION"],
+           azure_deployment=os.environ["AZURE_OPENAI_EMBEDDING_NAME"],
+           openai_api_version=os.environ["AZURE_OPENAI_API_VERSION"],
         )
 
-        DB_FAISS_PATH = 'vectorstore/db_faiss'
+        DB_FAISS_PATH = f'vectorstore/{app_user.identifier}'
 
         pdf_files = find_ext(FILES_FOLDER,"pdf")
 
@@ -251,14 +260,26 @@ output_type = "detailed"
 # to create a new file named vectorstore in your current directory.
 def load_knowledgeBase():
 
+        app_user = cl.user_session.get("user")
+        print("User:", app_user)
+
         embedding = AzureOpenAIEmbeddings(
            azure_deployment=os.environ["AZURE_OPENAI_EMBEDDING_NAME"],
            openai_api_version=os.environ["AZURE_OPENAI_API_VERSION"],
         )
 
-        DB_FAISS_PATH = 'vectorstore/db_faiss'
-        db = FAISS.load_local(DB_FAISS_PATH, embedding,allow_dangerous_deserialization=True)
+        DB_FAISS_PATH = f'vectorstore/{app_user.identifier}'
+
+        db = None
+
+        try:
+            db = FAISS.load_local(DB_FAISS_PATH, embedding,allow_dangerous_deserialization=True)
+            cl.user_session.set("db",db)
+        except Exception as err:
+            print(f"Unexpected {err=}, {type(err)=}")
+
         return db
+
 
 class PostMessageHandler(BaseCallbackHandler):
         """
@@ -338,7 +359,7 @@ async def on_chat_start():
 
     context = {
         "context": itemgetter("standalone_question")
-                    | db.as_retriever(search_type="similarity",search_kwargs={'k': 4}).with_config(run_name="Document retriever")
+                    | RunnableLambda(retrieve_documents)
                     | combine_documents,
         "question": itemgetter("standalone_question"),
     }
