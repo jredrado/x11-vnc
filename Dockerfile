@@ -7,16 +7,14 @@ WORKDIR /app
 ADD requirements.txt ./requirements.txt
 RUN pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt
 
-ADD app.py ./app.py
 ADD chainlit.py ./chainlit.py
 ADD chainlit.md ./chainlit.md
-
-COPY ./vectorstore/db_faiss ./vectorstore/db_faiss
 
 COPY ./public ./public
 COPY .chainlit .chainlit
 
-COPY ./doc ./doc
+COPY ./setupdoc ./doc
+COPY ./setupdb ./vectorstore
 
 EXPOSE 80
 

@@ -37,6 +37,7 @@ from langchain.callbacks.base import BaseCallbackHandler
 from typing import Dict, Optional
 import chainlit as cl
 
+from chainlit.input_widget import Select, Switch, Slider
 
 @cl.oauth_callback
 def oauth_callback(
@@ -54,14 +55,8 @@ async def set_starters():
     return [
         cl.Starter(
             label="Ayuda",
-            message="¿Qué puedes hacer por mi?",
+            message="¿En qué me puedes ayudar?",
             icon="/public/help.svg",
-            ),
-
-        cl.Starter(
-            label="Explain superconductors",
-            message="Explain superconductors like I'm five years old.",
-            icon="/public/idea.svg",
             ),
         ]
 
@@ -108,9 +103,11 @@ configurable_prompt = template_single_line.configurable_alternatives(
 DEFAULT_DOCUMENT_PROMPT = PromptTemplate.from_template(template="{page_content}")
 
 @cl.step(type="tool")
-def retrieve_documents(input):
+async def retrieve_documents(input):
     db = cl.user_session.get("db")
+
     if db:
+        print(db)
         return db.as_retriever(search_type="similarity",search_kwargs={'k': 4}).with_config(run_name="Document retriever")
     return []
 
@@ -154,7 +151,6 @@ async def nop (input):
     return input
 
 async def action_response (input):
-    print("Action response: ", input.content)
     return input.content
 
 @cl.action_callback("remove_file")
@@ -193,6 +189,13 @@ async def reindex(input):
 
         DB_FAISS_PATH = f'vectorstore/{app_user.identifier}'
 
+        try:
+            if  not os.path.exists(DB_FAISS_PATH):
+                os.mkdir(DB_FAISS_PATH)
+        except FileExistsError as err:
+            print(f"Unexpected {err=}, {type(err)=}")
+
+
         pdf_files = find_ext(FILES_FOLDER,"pdf")
 
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
@@ -215,6 +218,8 @@ async def reindex(input):
 
             vectorstore.save_local(DB_FAISS_PATH)
 
+            load_knowledgeBase()
+
             await cl.Message(content="Se ha reconstruido la base de datos").send()
 
         return ""
@@ -223,9 +228,6 @@ async def reindex(input):
 async def upload_actions(input):
 
     current_step = cl.context.current_step
-
-    # Override the input of the step
-    print("Step input:",current_step.input)
 
     # Wait for the user to upload a file
     files = None
@@ -241,9 +243,23 @@ async def upload_actions(input):
         print(file,"-->",f'{FILES_FOLDER}/{file.name}')
         shutil.copy(file.path,f'{FILES_FOLDER}/{file.name}')
 
-    return f"`Los archivos {files}` se han añadido a la base de datos"
+    return f"Los archivos se han añadido. Reconstruye la base de datos para que los cambios tengan efecto"
 
 
+@cl.step(type="tool")
+async def current_model(input):
+        return cl.user_session.get("model")
+
+@cl.on_settings_update
+async def setup_agent(settings):
+
+    model = AzureChatOpenAI(
+        openai_api_version=os.environ["AZURE_OPENAI_API_VERSION"],
+        azure_deployment=os.environ["AZURE_OPENAI_CHAT_DEPLOYMENT_NAME"],
+        temperature=settings["Temperature"], streaming=True
+    )
+
+    cl.user_session.set("model",model)
 
 def format_chat_history(chat_history: dict) -> str:
     """Format chat history into a string."""
@@ -257,11 +273,9 @@ def format_chat_history(chat_history: dict) -> str:
 output_type = "detailed"
 
 
-# to create a new file named vectorstore in your current directory.
 def load_knowledgeBase():
 
         app_user = cl.user_session.get("user")
-        print("User:", app_user)
 
         embedding = AzureOpenAIEmbeddings(
            azure_deployment=os.environ["AZURE_OPENAI_EMBEDDING_NAME"],
@@ -300,7 +314,6 @@ class PostMessageHandler(BaseCallbackHandler):
                 self.sources_path.add(d.metadata['source'])
 
         def on_llm_end(self, response, *, run_id, parent_run_id, **kwargs):
-            print("on_llm_end")
             if len(self.sources):
                 sources_text = "\n".join([f"{Path(source).name}#page={page}" for source, page in self.sources])
                 self.msg.elements.append(
@@ -318,18 +331,33 @@ class PostMessageHandler(BaseCallbackHandler):
 @cl.on_chat_start
 async def on_chat_start():
 
+    settings = await cl.ChatSettings(
+        [
+            Slider(
+                id="Temperature",
+                label="Creatividad del modelo",
+                initial=0.5,
+                min=0,
+                max=1,
+                step=0.1,
+            ),
+        ]
+    ).send()
+
     cl.user_session.set(
         "chat_history",
         [{"role": "system", "content": "You are a helpful assistant on staff regulations on University of Navarra. You must be kind and answer the questions from University employees regarding several subjects."}],
     )
 
-    db = load_knowledgeBase()
+    load_knowledgeBase()
 
     model = AzureChatOpenAI(
         openai_api_version=os.environ["AZURE_OPENAI_API_VERSION"],
         azure_deployment=os.environ["AZURE_OPENAI_CHAT_DEPLOYMENT_NAME"],
-        temperature=0.5, streaming=True
+        temperature=settings["Temperature"], streaming=True
     )
+
+    cl.user_session.set("model",model)
 
     embedding = AzureOpenAIEmbeddings(
         azure_deployment=os.environ["AZURE_OPENAI_EMBEDDING_NAME"],
@@ -339,7 +367,7 @@ async def on_chat_start():
     actions_chain = RunnableMap(
         action = RunnablePassthrough()
         | ACTIONS_QUESTION_PROMPT
-        | model
+        | current_model
         | action_response
     )
 
@@ -353,7 +381,7 @@ async def on_chat_start():
             chat_history=lambda x: format_chat_history(x["chat_history"])
         )
         | CONDENSE_QUESTION_PROMPT
-        | model
+        | current_model
         | StrOutputParser(),
     )
 
@@ -383,7 +411,7 @@ async def on_message(message: cl.Message):
     message_history = cl.user_session.get("chat_history")
     message_history.append({"role": "user", "content": message.content})
 
-    chain = cl.user_session.get("question_chain")  # type: Runnable
+    chain = cl.user_session.get("question_chain") 
 
 
     msg = cl.Message(content="")
