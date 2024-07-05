@@ -18,4 +18,4 @@ COPY ./setupdb ./vectorstore
 
 EXPOSE 80
 
-CMD [ "chainlit", "run", "chainlit.py", "--port","80"]
+ENTRYPOINT ["chainlit", "run", "chainlit.py", "--host", "0.0.0.0", "--port", "80", "--headless"]

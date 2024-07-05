@@ -25,6 +25,7 @@ az container create \
   --cpu 4 \
   --memory 16
 
+
 # mindsdb/mindsdb:lightwood
 
 

@@ -167,8 +167,9 @@ async def on_action(action):
 @cl.step(type="tool")
 async def list_files(input):
     current_step = cl.context.current_step
+    app_user = cl.user_session.get("user")
 
-    pdf_files = find_ext(FILES_FOLDER,"pdf")
+    pdf_files = find_ext(f'{FILES_FOLDER}/{app_user.identifier}',"pdf")
 
     for pdf in pdf_files:
         actions = []
@@ -195,8 +196,7 @@ async def reindex(input):
         except FileExistsError as err:
             print(f"Unexpected {err=}, {type(err)=}")
 
-
-        pdf_files = find_ext(FILES_FOLDER,"pdf")
+        pdf_files = find_ext(f'{FILES_FOLDER}/{app_user.identifier}',"pdf")
 
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
 
@@ -228,6 +228,7 @@ async def reindex(input):
 async def upload_actions(input):
 
     current_step = cl.context.current_step
+    app_user = cl.user_session.get("user")
 
     # Wait for the user to upload a file
     files = None
@@ -239,9 +240,16 @@ async def upload_actions(input):
                 max_size_mb=10
         ).send()
 
+    if not os.path.isdir(f'{FILES_FOLDER}/{app_user.identifier}'):
+        try:
+            os.mkdir ( f'{FILES_FOLDER}/{app_user.identifier}' )
+        except Exception as err:
+            print(f"Unexpected {err=}, {type(err)=}")
+
+
     for file in files:
-        print(file,"-->",f'{FILES_FOLDER}/{file.name}')
-        shutil.copy(file.path,f'{FILES_FOLDER}/{file.name}')
+        print(file,"-->",f'{FILES_FOLDER}/{app_user.identifier}/{file.name}')
+        shutil.copy(file.path,f'{FILES_FOLDER}/{app_user.identifier}/{file.name}')
 
     return f"Los archivos se han añadido. Reconstruye la base de datos para que los cambios tengan efecto"
 
